@@ -12,7 +12,7 @@
         android:id="@+id/tvWx"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="微信群头像"
+        android:text="微信群头像类型："
         android:textColor="@color/black"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
@@ -39,7 +39,7 @@
         android:layout_height="80dp"
         android:layout_marginStart="10dp"
         app:layout_constraintLeft_toRightOf="@+id/image3"
-        app:layout_constraintTop_toTopOf="@+id/image2" />
+        app:layout_constraintTop_toTopOf="@+id/image3" />
 
     <ImageView
         android:id="@+id/image5"
@@ -47,7 +47,7 @@
         android:layout_height="80dp"
         android:layout_marginStart="10dp"
         app:layout_constraintLeft_toRightOf="@+id/image4"
-        app:layout_constraintTop_toTopOf="@+id/image2" />
+        app:layout_constraintTop_toTopOf="@+id/image4" />
 
     <ImageView
         android:id="@+id/image6"
@@ -83,5 +83,39 @@
         android:layout_marginTop="20dp"
         app:layout_constraintLeft_toRightOf="@+id/image8"
         app:layout_constraintTop_toBottomOf="@id/image2" />
+
+    <TextView
+        android:id="@+id/tvDing"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="钉钉群头像类型："
+        android:textColor="@color/black"
+        android:layout_marginTop="20dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/image6" />
+
+    <ImageView
+        android:id="@+id/imageD2"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginTop="20dp"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvDing" />
+
+    <ImageView
+        android:id="@+id/imageD3"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginStart="10dp"
+        app:layout_constraintLeft_toRightOf="@+id/imageD2"
+        app:layout_constraintTop_toTopOf="@+id/imageD2" />
+
+    <ImageView
+        android:id="@+id/imageD4"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginStart="10dp"
+        app:layout_constraintLeft_toRightOf="@+id/imageD3"
+        app:layout_constraintTop_toTopOf="@+id/imageD3" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

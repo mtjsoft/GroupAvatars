@@ -11,7 +11,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 
-import static cn.mtjsoft.groupavatarslib.utils.DisplayUtils.sp2px;
+import static cn.mtjsoft.groupavatarslib.utils.DisplayUtils.dp2px;
 
 /**
  * @author mtj
@@ -30,7 +30,7 @@ public class FileUtils {
         RectF rectF = new RectF(rect);
         paint.setAntiAlias(true);
         canvas.drawARGB(0, 0, 0, 0);
-        paint.setColor(color);
+        paint.setColor(color == 0 ? Color.GRAY : color);
         canvas.drawRoundRect(rectF, roundPx, roundPx, paint);
         paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
         canvas.drawBitmap(output, rect, rect, paint);
@@ -39,7 +39,7 @@ public class FileUtils {
         // sans serif字体类型
         paint.setTypeface(Typeface.SANS_SERIF);
         // 设置字体的大小
-        paint.setTextSize((textSize <= 0 ? 12 : textSize) * sp2px(context, 1));
+        paint.setTextSize(textSize);
         // x位于字符串中心
         paint.setTextAlign(Paint.Align.CENTER);
         Paint.FontMetrics fontMetrics = paint.getFontMetrics();

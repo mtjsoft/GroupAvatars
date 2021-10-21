@@ -1,13 +1,18 @@
 package cn.mtjsoft.groupavatarslib;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.Drawable;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
 import android.text.TextUtils;
 import android.widget.ImageView;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.RequestBuilder;
 import com.bumptech.glide.load.DataSource;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.engine.GlideException;
@@ -15,15 +20,12 @@ import com.bumptech.glide.load.resource.bitmap.CircleCrop;
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
 import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.RequestOptions;
-import com.bumptech.glide.request.target.CustomTarget;
 import com.bumptech.glide.request.target.Target;
-import com.bumptech.glide.request.transition.Transition;
 
 import java.lang.ref.WeakReference;
 import java.util.List;
 
 import androidx.annotation.ColorRes;
-import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import cn.mtjsoft.groupavatarslib.cache.LruCacheHelper;
@@ -32,16 +34,19 @@ import cn.mtjsoft.groupavatarslib.layout.ILayoutManager;
 import cn.mtjsoft.groupavatarslib.layout.WechatLayoutManager;
 import cn.mtjsoft.groupavatarslib.utils.FileUtils;
 import cn.mtjsoft.groupavatarslib.utils.MD5Util;
+import cn.mtjsoft.groupavatarslib.utils.thread.ThreadPoolUtils;
 
 import static cn.mtjsoft.groupavatarslib.utils.DisplayUtils.dp2px;
 
 /**
  * @author mtj
  * Date: 2021-10-21 15:38:45
- *
+ * <p>
  * 群头像参数设置
  */
 public class Builder {
+    private static final int LOAD_END = 0x09;
+
     private final WeakReference<Context> context;
 
     private WeakReference<ImageView> imageView;
@@ -106,13 +111,25 @@ public class Builder {
     /**
      * 昵称生成头像是的背景
      */
-    @ColorRes
     private int nickAvatarColor;
 
     /**
      * 内部小头像的圆角
      */
-    private int childAvatarRound = 9;
+    private int childAvatarRoundPx = 0;
+
+    /**
+     * 昵称生成头像时的文字大小 dp
+     */
+    private int nickTextSize = 0;
+
+
+    /**
+     * 使用glide加载出所需bitmap
+     */
+    private int overCount = 0;
+
+    private Bitmap[] bitmaps;
 
     public Builder(Context context) {
         this.context = new WeakReference<>(context);
@@ -132,7 +149,7 @@ public class Builder {
     }
 
     public Builder setNickAvatarColor(@ColorRes int nickAvatarColor) {
-        this.nickAvatarColor = nickAvatarColor;
+        this.nickAvatarColor = ContextCompat.getColor(context.get(), nickAvatarColor);
         return this;
     }
 
@@ -167,8 +184,18 @@ public class Builder {
         return this;
     }
 
-    public Builder setRoundPx(int roundPx) {
-        this.roundPx = roundPx;
+    public Builder setRound(int round) {
+        this.roundPx = dp2px(context.get(), round);
+        return this;
+    }
+
+    public Builder setChildAvatarRound(int childAvatarRound) {
+        this.childAvatarRoundPx = dp2px(context.get(), childAvatarRound);
+        return this;
+    }
+
+    public Builder setNickTextSize(int nickTextSize) {
+        this.nickTextSize = dp2px(context.get(), nickTextSize);
         return this;
     }
 
@@ -194,7 +221,78 @@ public class Builder {
         }
         subSize = getSubSize(size, gap, layoutManager, count);
         // 根据所有参数，生成Bitmap[]数组
-        loadBitmap();
+        overCount = 0;
+        recycleBitmap();
+        bitmaps = new Bitmap[count];
+        boolean isDing = layoutManager instanceof DingLayoutManager;
+        int netImgRound = childAvatarRoundPx / (size / subSize);
+        for (int i = 0; i < count; i++) {
+            // 网络图片，使用glide获取bitmap
+            if (datas.get(i).startsWith("http://") || datas.get(i).startsWith("https://")) {
+                loadBitmapGlide(isDing, netImgRound, i);
+            } else {
+                loadBitmapByNickName(isDing, i);
+            }
+        }
+    }
+
+    /**
+     * 使用Glide 从网络加载图片
+     *
+     * @param isDing      是否是钉钉群头像类型
+     * @param netImgRound 圆角大小
+     * @param position    数组下标
+     */
+    @SuppressLint("CheckResult")
+    private void loadBitmapGlide(boolean isDing, int netImgRound, final int position) {
+        RequestBuilder<Bitmap> requestBuilder = Glide.with(context.get())
+                .asBitmap()
+                .load(datas.get(position))
+                .override(subSize, subSize)
+                .centerCrop()
+                // 禁止掉glide内存和磁盘缓存
+                .diskCacheStrategy(DiskCacheStrategy.NONE)
+                .skipMemoryCache(true)
+                .error(placeholder)
+                .listener(new RequestListener<Bitmap>() {
+                    @Override
+                    public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Bitmap> target,
+                                                boolean isFirstResource) {
+                        Message message = mHandler.obtainMessage(LOAD_END, position, 0,
+                                BitmapFactory.decodeResource(context.get().getResources(), placeholder));
+                        mHandler.sendMessage(message);
+                        return false;
+                    }
+
+                    @Override
+                    public boolean onResourceReady(Bitmap resource, Object model, Target<Bitmap> target,
+                                                   DataSource dataSource, boolean isFirstResource) {
+                        Message message = mHandler.obtainMessage(LOAD_END, position, 0, resource);
+                        mHandler.sendMessage(message);
+                        return false;
+                    }
+                });
+        if (!isDing) {
+            requestBuilder.apply(RequestOptions.bitmapTransform(new RoundedCorners(netImgRound)));
+        }
+        requestBuilder.submit(subSize, subSize);
+    }
+
+    /**
+     * 使用Glide 从网络加载图片
+     *
+     * @param isDing   是否是钉钉群头像类型
+     * @param position 数组下标
+     */
+    private void loadBitmapByNickName(boolean isDing, final int position) {
+        ThreadPoolUtils.execute(() -> {
+            // 昵称自行生成bitmap
+            Message message = mHandler.obtainMessage(LOAD_END, position, 0,
+                    FileUtils.getRoundBitmap(context.get(), subSize, isDing ? 0 : childAvatarRoundPx,
+                            getShortNickName(datas.get(position)),
+                            nickAvatarColor, nickTextSize > 0 ? nickTextSize : subSize / 4));
+            mHandler.sendMessage(message);
+        });
     }
 
     /**
@@ -214,7 +312,7 @@ public class Builder {
      * 根据最终生成bitmap的尺寸，计算单个bitmap尺寸
      */
     private int getSubSize(int size, int gap, ILayoutManager layoutManager, int count) {
-        int subSize = 0;
+        int subSize;
         if (layoutManager instanceof DingLayoutManager) {
             subSize = size;
         } else if (layoutManager instanceof WechatLayoutManager) {
@@ -222,82 +320,13 @@ public class Builder {
                 subSize = size;
             } else if (count < 5) {
                 subSize = (size - 3 * gap) / 2;
-            } else if (count < 10) {
+            } else {
                 subSize = (size - 4 * gap) / 3;
             }
         } else {
             throw new IllegalArgumentException("Must use DingLayoutManager or WechatRegionManager!");
         }
         return subSize;
-    }
-
-    /**
-     * 使用glide加载出所需bitmap
-     */
-    private int overCount = 0;
-
-    private Bitmap[] bitmaps;
-
-    private synchronized void loadBitmap() {
-        overCount = 0;
-        recycleBitmap();
-        bitmaps = new Bitmap[count];
-        int localImgRound = 9;
-        int netImgRound = localImgRound / (size / subSize);
-        for (int i = 0; i < count; i++) {
-            // 网络图片，使用glide获取bitmap
-            if (datas.get(i).startsWith("http") || datas.get(i).startsWith("https")) {
-                int finalI = i;
-                Glide.with(context.get())
-                    .asBitmap()
-                    .load(datas.get(i))
-                    .override(subSize, subSize)
-                    .centerCrop()
-                    .apply(RequestOptions.bitmapTransform(new RoundedCorners(netImgRound)))
-                    .error(placeholder)
-                    .placeholder(placeholder)
-                    .listener(new RequestListener<Bitmap>() {
-                        @Override
-                        public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Bitmap> target,
-                            boolean isFirstResource) {
-                            bitmaps[finalI] = BitmapFactory.decodeResource(context.get().getResources(), placeholder);
-                            overCount++;
-                            if (overCount >= count) {
-                                showImage(layoutManager.combineBitmap(size, subSize, gap, gapColor, bitmaps), false);
-                            }
-                            return false;
-                        }
-
-                        @Override
-                        public boolean onResourceReady(Bitmap resource, Object model, Target<Bitmap> target,
-                            DataSource dataSource, boolean isFirstResource) {
-                            return false;
-                        }
-                    })
-                    .into(new CustomTarget<Bitmap>(subSize, subSize) {
-                        @Override
-                        public void onResourceReady(@NonNull Bitmap resource, @Nullable Transition<? super Bitmap> transition) {
-                            bitmaps[finalI] = resource;
-                            overCount++;
-                            if (overCount >= count) {
-                                showImage(layoutManager.combineBitmap(size, subSize, gap, gapColor, bitmaps), false);
-                            }
-                        }
-
-                        @Override
-                        public void onLoadCleared(@Nullable Drawable drawable) {
-                        }
-                    });
-            } else {
-                // 昵称自行生成bitmap
-                bitmaps[i] = FileUtils.getRoundBitmap(context.get(), size, localImgRound, getShortNickName(datas.get(i)),
-                    ContextCompat.getColor(context.get(), nickAvatarColor), 12);
-                overCount++;
-                if (overCount >= count) {
-                    showImage(layoutManager.combineBitmap(size, subSize, gap, gapColor, bitmaps), false);
-                }
-            }
-        }
     }
 
     /**
@@ -321,6 +350,23 @@ public class Builder {
         }
     }
 
+    private final Handler mHandler = new Handler(Looper.getMainLooper()) {
+        @Override
+        public void handleMessage(Message msg) {
+            super.handleMessage(msg);
+            if (msg.what == LOAD_END && context.get() != null && imageView.get() != null) {
+                bitmaps[msg.arg1] = (Bitmap) msg.obj;
+                overCount++;
+                if (overCount == count) {
+                    ThreadPoolUtils.execute(() -> {
+                        showImage(layoutManager.combineBitmap(size, subSize, gap, gapColor, bitmaps), false);
+                    });
+                }
+            }
+        }
+    };
+
+    @SuppressLint("CheckResult")
     private synchronized void showImage(Bitmap bitmap, boolean fromCache) {
         if (bitmap == null || context.get() == null || imageView.get() == null) {
             return;
@@ -330,23 +376,19 @@ public class Builder {
             LruCacheHelper.init().addBitmapToMemoryCache(md5, bitmap);
         }
         if (context.get() != null && imageView.get() != null) {
-            if (layoutManager instanceof DingLayoutManager) {
-                Glide.with(context.get())
-                    .load(bitmap)
-                    // 禁止掉glide内存和磁盘缓存
-                    .diskCacheStrategy(DiskCacheStrategy.NONE)
-                    .skipMemoryCache(true)
-                    .apply(RequestOptions.bitmapTransform(new CircleCrop()).error(placeholder))
-                    .into(imageView.get());
-            } else if (layoutManager instanceof WechatLayoutManager) {
-                Glide.with(context.get())
-                    .load(bitmap)
-                    // 禁止掉glide内存和磁盘缓存
-                    .diskCacheStrategy(DiskCacheStrategy.NONE)
-                    .skipMemoryCache(true)
-                    .apply(RequestOptions.bitmapTransform(new RoundedCorners(roundPx)).error(placeholder))
-                    .into(imageView.get());
-            }
+            mHandler.post(() -> {
+                RequestBuilder<Drawable> requestBuilder = Glide.with(context.get())
+                        .load(bitmap)
+                        // 禁止掉glide内存和磁盘缓存
+                        .diskCacheStrategy(DiskCacheStrategy.NONE)
+                        .skipMemoryCache(true);
+                if (layoutManager instanceof DingLayoutManager) {
+                    requestBuilder.apply(RequestOptions.bitmapTransform(new CircleCrop()));
+                } else if (layoutManager instanceof WechatLayoutManager) {
+                    requestBuilder.apply(RequestOptions.bitmapTransform(new RoundedCorners(roundPx <= 0 ? 1 : roundPx)));
+                }
+                requestBuilder.into(imageView.get());
+            });
         }
     }
 }
