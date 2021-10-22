@@ -1,5 +1,4 @@
 # GroupAvatars
-===
 
 ```kotlin
 allprojects {
@@ -11,7 +10,7 @@ allprojects {
 
 ```kotlin
 dependencies {
-	        implementation 'com.github.mtjsoft:GroupAvatars:1.0.0'
+	        implementation 'com.github.mtjsoft:GroupAvatars:1.1.0'
 	}
 ```
 
@@ -46,6 +45,10 @@ GroupAvatarsLib.init(getBaseContext())
                 .setImageView(imageView)
                 .build();
 ```
+
+### Version
+
+- 1.1.0 处理内存缓存、磁盘缓存
 
 ### 效果展示
 <img src="./images/1.jpg"/>
