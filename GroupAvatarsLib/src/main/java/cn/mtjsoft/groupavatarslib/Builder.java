@@ -28,6 +28,7 @@ import java.util.List;
 import androidx.annotation.ColorRes;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
+import cn.mtjsoft.groupavatarslib.cache.DiskLruCacheHelper;
 import cn.mtjsoft.groupavatarslib.cache.LruCacheHelper;
 import cn.mtjsoft.groupavatarslib.layout.DingLayoutManager;
 import cn.mtjsoft.groupavatarslib.layout.ILayoutManager;
@@ -123,7 +124,6 @@ public class Builder {
      */
     private int nickTextSize = 0;
 
-
     /**
      * 使用glide加载出所需bitmap
      */
@@ -133,6 +133,7 @@ public class Builder {
 
     public Builder(Context context) {
         this.context = new WeakReference<>(context);
+        DiskLruCacheHelper.init().setDiskLruCachePath(context.getApplicationContext());
     }
 
     public Builder setImageView(ImageView imageView) {
@@ -202,11 +203,20 @@ public class Builder {
     public void build() {
         // 生成md5用于缓存的key
         createKey();
-        // 先从缓存中查找
+        // 先从内存缓存中查找
         Bitmap bitmap = LruCacheHelper.init().getBitmapFromMemCache(md5);
         if (bitmap != null) {
             // 缓存中存在，直接显示，不再生成bitmap了
             showImage(bitmap, true);
+            return;
+        }
+        // 再从磁盘缓存中取
+        Bitmap bitmapDisk = DiskLruCacheHelper.init().getBitmapFromDiskCache(md5);
+        if (bitmapDisk != null) {
+            // 磁盘缓存中存在，直接显示，不再生成bitmap了
+            showImage(bitmapDisk, true);
+            // 将磁盘缓存写入到内存缓存
+            LruCacheHelper.init().addBitmapToMemoryCache(md5, bitmapDisk);
             return;
         }
         if (layoutManager == null) {
@@ -245,7 +255,8 @@ public class Builder {
      */
     @SuppressLint("CheckResult")
     private void loadBitmapGlide(boolean isDing, int netImgRound, final int position) {
-        RequestBuilder<Bitmap> requestBuilder = Glide.with(context.get())
+        RequestBuilder<Bitmap> requestBuilder =
+            Glide.with(context.get())
                 .asBitmap()
                 .load(datas.get(position))
                 .override(subSize, subSize)
@@ -257,16 +268,16 @@ public class Builder {
                 .listener(new RequestListener<Bitmap>() {
                     @Override
                     public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Bitmap> target,
-                                                boolean isFirstResource) {
+                        boolean isFirstResource) {
                         Message message = mHandler.obtainMessage(LOAD_END, position, 0,
-                                BitmapFactory.decodeResource(context.get().getResources(), placeholder));
+                            BitmapFactory.decodeResource(context.get().getResources(), placeholder));
                         mHandler.sendMessage(message);
                         return false;
                     }
 
                     @Override
-                    public boolean onResourceReady(Bitmap resource, Object model, Target<Bitmap> target,
-                                                   DataSource dataSource, boolean isFirstResource) {
+                    public boolean onResourceReady(Bitmap resource, Object model, Target<Bitmap> target, DataSource dataSource,
+                        boolean isFirstResource) {
                         Message message = mHandler.obtainMessage(LOAD_END, position, 0, resource);
                         mHandler.sendMessage(message);
                         return false;
@@ -288,9 +299,8 @@ public class Builder {
         ThreadPoolUtils.execute(() -> {
             // 昵称自行生成bitmap
             Message message = mHandler.obtainMessage(LOAD_END, position, 0,
-                    FileUtils.getRoundBitmap(context.get(), subSize, isDing ? 0 : childAvatarRoundPx,
-                            getShortNickName(datas.get(position)),
-                            nickAvatarColor, nickTextSize > 0 ? nickTextSize : subSize / 4));
+                FileUtils.getRoundBitmap(context.get(), subSize, isDing ? 0 : childAvatarRoundPx,
+                    getShortNickName(datas.get(position)), nickAvatarColor, nickTextSize > 0 ? nickTextSize : subSize / 4));
             mHandler.sendMessage(message);
         });
     }
@@ -367,28 +377,25 @@ public class Builder {
     };
 
     @SuppressLint("CheckResult")
-    private synchronized void showImage(Bitmap bitmap, boolean fromCache) {
-        if (bitmap == null || context.get() == null || imageView.get() == null) {
-            return;
-        }
-        if (!fromCache) {
-            // 不是来自缓存，就存入缓存中
-            LruCacheHelper.init().addBitmapToMemoryCache(md5, bitmap);
-        }
-        if (context.get() != null && imageView.get() != null) {
-            mHandler.post(() -> {
-                RequestBuilder<Drawable> requestBuilder = Glide.with(context.get())
-                        .load(bitmap)
-                        // 禁止掉glide内存和磁盘缓存
-                        .diskCacheStrategy(DiskCacheStrategy.NONE)
-                        .skipMemoryCache(true);
+    private synchronized void showImage(Bitmap bitmap, final boolean fromCache) {
+        mHandler.post(() -> {
+            if (bitmap != null && context.get() != null && imageView.get() != null) {
+                if (!fromCache) {
+                    // 不是来自缓存，就存入内存缓存中
+                    LruCacheHelper.init().addBitmapToMemoryCache(md5, bitmap);
+                    // 存入磁盘
+                    DiskLruCacheHelper.init().addBitmapToDiskCache(md5, bitmap);
+                }
+                RequestBuilder<Drawable> requestBuilder = Glide.with(context.get()).load(bitmap)
+                    // 禁止掉glide内存和磁盘缓存
+                    .diskCacheStrategy(DiskCacheStrategy.NONE).skipMemoryCache(true);
                 if (layoutManager instanceof DingLayoutManager) {
                     requestBuilder.apply(RequestOptions.bitmapTransform(new CircleCrop()));
                 } else if (layoutManager instanceof WechatLayoutManager) {
                     requestBuilder.apply(RequestOptions.bitmapTransform(new RoundedCorners(roundPx <= 0 ? 1 : roundPx)));
                 }
                 requestBuilder.into(imageView.get());
-            });
-        }
+            }
+        });
     }
 }

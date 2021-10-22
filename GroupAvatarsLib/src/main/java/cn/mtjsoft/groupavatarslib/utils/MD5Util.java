@@ -1,6 +1,7 @@
 package cn.mtjsoft.groupavatarslib.utils;
 
 import android.util.Log;
+
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -10,7 +11,6 @@ import java.security.NoSuchAlgorithmException;
  * @desc
  * @email mtjsoft3@gmail.com
  */
-
 public class MD5Util {
     public MD5Util() {
     }
@@ -23,31 +23,23 @@ public class MD5Util {
 
     public static String stringMD5(String input) {
         try {
-            MessageDigest messageDigest = MessageDigest.getInstance("MD5");
-            byte[] inputByteArray = input.getBytes();
-            messageDigest.update(inputByteArray);
-            byte[] resultByteArray = messageDigest.digest();
-            return byteArrayToHex(resultByteArray);
-        } catch (NoSuchAlgorithmException var4) {
+            byte[] resultByteArray = encryptMD5(input.getBytes());
+            return bytesToHexString(resultByteArray);
+        } catch (Exception var4) {
             Log.e("MD5Util", "stringMD5()... error : " + var4.getMessage());
             return "";
         }
     }
 
-    private static String byteArrayToHex(byte[] byteArray) {
-        char[] hexDigits = new char[]{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
-        char[] resultCharArray = new char[byteArray.length * 2];
-        int index = 0;
-        byte[] var4 = byteArray;
-        int var5 = byteArray.length;
-        for(int var6 = 0; var6 < var5; ++var6) {
-            byte b = var4[var6];
-            resultCharArray[index++] = hexDigits[b >>> 4 & 15];
-            resultCharArray[index++] = hexDigits[b & 15];
+    private static String bytesToHexString(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte aByte : bytes) {
+            String hex = Integer.toHexString(0xFF & aByte);
+            if (hex.length() == 1) {
+                sb.append('0');
+            }
+            sb.append(hex);
         }
-        String result;
-        for(result = new String(resultCharArray); result.length() < 16; result = "0" + result) {
-        }
-        return result;
+        return sb.toString();
     }
 }
