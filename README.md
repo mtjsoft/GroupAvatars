@@ -10,7 +10,7 @@ allprojects {
 
 ```kotlin
 dependencies {
-	        implementation 'com.github.mtjsoft:GroupAvatars:1.1.0'
+	        implementation 'com.github.mtjsoft:GroupAvatars:1.2.0'
 	}
 ```
 
@@ -47,8 +47,8 @@ GroupAvatarsLib.init(getBaseContext())
 ```
 
 ### Version
-
-- 1.1.0 处理内存缓存、磁盘缓存
+- 1.2.0 修复单个图片的圆角设置问题
+- 1.1.0 修改内存缓存、磁盘缓存问题
 
 ### 效果展示
 <img src="./images/1.jpg"/>
