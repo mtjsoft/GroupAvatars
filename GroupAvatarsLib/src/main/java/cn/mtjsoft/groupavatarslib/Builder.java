@@ -235,11 +235,10 @@ public class Builder {
         recycleBitmap();
         bitmaps = new Bitmap[count];
         boolean isDing = layoutManager instanceof DingLayoutManager;
-        int netImgRound = childAvatarRoundPx / (size / subSize);
         for (int i = 0; i < count; i++) {
             // 网络图片，使用glide获取bitmap
             if (datas.get(i).startsWith("http://") || datas.get(i).startsWith("https://")) {
-                loadBitmapGlide(isDing, netImgRound, i);
+                loadBitmapGlide(isDing, i);
             } else {
                 loadBitmapByNickName(isDing, i);
             }
@@ -250,11 +249,10 @@ public class Builder {
      * 使用Glide 从网络加载图片
      *
      * @param isDing      是否是钉钉群头像类型
-     * @param netImgRound 圆角大小
      * @param position    数组下标
      */
     @SuppressLint("CheckResult")
-    private void loadBitmapGlide(boolean isDing, int netImgRound, final int position) {
+    private void loadBitmapGlide(boolean isDing, final int position) {
         RequestBuilder<Bitmap> requestBuilder =
             Glide.with(context.get())
                 .asBitmap()
@@ -283,8 +281,8 @@ public class Builder {
                         return false;
                     }
                 });
-        if (!isDing) {
-            requestBuilder.apply(RequestOptions.bitmapTransform(new RoundedCorners(netImgRound)));
+        if (!isDing && childAvatarRoundPx > 0) {
+            requestBuilder.apply(RequestOptions.bitmapTransform(new RoundedCorners(childAvatarRoundPx)));
         }
         requestBuilder.submit(subSize, subSize);
     }
