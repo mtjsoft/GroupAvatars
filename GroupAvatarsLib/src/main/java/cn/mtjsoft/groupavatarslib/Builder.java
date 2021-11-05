@@ -33,7 +33,6 @@ import cn.mtjsoft.groupavatarslib.cache.LruCacheHelper;
 import cn.mtjsoft.groupavatarslib.layout.DingLayoutManager;
 import cn.mtjsoft.groupavatarslib.layout.ILayoutManager;
 import cn.mtjsoft.groupavatarslib.layout.WechatLayoutManager;
-import cn.mtjsoft.groupavatarslib.utils.FileUtils;
 import cn.mtjsoft.groupavatarslib.utils.MD5Util;
 import cn.mtjsoft.groupavatarslib.utils.thread.ThreadPoolUtils;
 
@@ -129,7 +128,7 @@ public class Builder {
      */
     private int overCount = 0;
 
-    private Bitmap[] bitmaps;
+    private Object[] mObjects;
 
     public Builder(Context context) {
         this.context = new WeakReference<>(context);
@@ -181,7 +180,9 @@ public class Builder {
 
     public Builder setDatas(List<String> datas) {
         this.datas = datas;
-        this.count = datas.size();
+        if (datas != null) {
+            this.count = datas.size();
+        }
         return this;
     }
 
@@ -201,6 +202,9 @@ public class Builder {
     }
 
     public void build() {
+        if (this.datas == null) {
+            throw new RuntimeException("datas cant not is null");
+        }
         // 生成md5用于缓存的key
         createKey();
         // 先从内存缓存中查找
@@ -233,14 +237,15 @@ public class Builder {
         // 根据所有参数，生成Bitmap[]数组
         overCount = 0;
         recycleBitmap();
-        bitmaps = new Bitmap[count];
+        mObjects = new Object[count];
         boolean isDing = layoutManager instanceof DingLayoutManager;
         for (int i = 0; i < count; i++) {
             // 网络图片，使用glide获取bitmap
             if (datas.get(i).startsWith("http://") || datas.get(i).startsWith("https://")) {
                 loadBitmapGlide(isDing, i);
             } else {
-                loadBitmapByNickName(isDing, i);
+                Message message = mHandler.obtainMessage(LOAD_END, i, 0, getShortNickName(datas.get(i)));
+                mHandler.sendMessage(message);
             }
         }
     }
@@ -248,8 +253,8 @@ public class Builder {
     /**
      * 使用Glide 从网络加载图片
      *
-     * @param isDing      是否是钉钉群头像类型
-     * @param position    数组下标
+     * @param isDing   是否是钉钉群头像类型
+     * @param position 数组下标
      */
     @SuppressLint("CheckResult")
     private void loadBitmapGlide(boolean isDing, final int position) {
@@ -285,22 +290,6 @@ public class Builder {
             requestBuilder.apply(RequestOptions.bitmapTransform(new RoundedCorners(childAvatarRoundPx)));
         }
         requestBuilder.submit(subSize, subSize);
-    }
-
-    /**
-     * 使用Glide 从网络加载图片
-     *
-     * @param isDing   是否是钉钉群头像类型
-     * @param position 数组下标
-     */
-    private void loadBitmapByNickName(boolean isDing, final int position) {
-        ThreadPoolUtils.execute(() -> {
-            // 昵称自行生成bitmap
-            Message message = mHandler.obtainMessage(LOAD_END, position, 0,
-                FileUtils.getRoundBitmap(context.get(), subSize, isDing ? 0 : childAvatarRoundPx,
-                    getShortNickName(datas.get(position)), nickAvatarColor, nickTextSize > 0 ? nickTextSize : subSize / 4));
-            mHandler.sendMessage(message);
-        });
     }
 
     /**
@@ -351,9 +340,11 @@ public class Builder {
     }
 
     private synchronized void recycleBitmap() {
-        if (bitmaps != null && bitmaps.length > 0) {
-            for (Bitmap bitmap : bitmaps) {
-                bitmap.recycle();
+        if (mObjects != null && mObjects.length > 0) {
+            for (Object obj : mObjects) {
+                if (obj instanceof Bitmap) {
+                    ((Bitmap) obj).recycle();
+                }
             }
         }
     }
@@ -363,11 +354,12 @@ public class Builder {
         public void handleMessage(Message msg) {
             super.handleMessage(msg);
             if (msg.what == LOAD_END && context.get() != null && imageView.get() != null) {
-                bitmaps[msg.arg1] = (Bitmap) msg.obj;
+                mObjects[msg.arg1] = msg.obj;
                 overCount++;
                 if (overCount == count) {
                     ThreadPoolUtils.execute(() -> {
-                        showImage(layoutManager.combineBitmap(size, subSize, gap, gapColor, bitmaps), false);
+                        showImage(layoutManager.combineBitmap(size, subSize, gap, gapColor, mObjects, childAvatarRoundPx,
+                            nickAvatarColor, nickTextSize > 0 ? nickTextSize : subSize / 4), false);
                     });
                 }
             }
