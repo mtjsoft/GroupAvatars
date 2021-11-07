@@ -10,7 +10,7 @@ allprojects {
 
 ```kotlin
 dependencies {
-	        implementation 'com.github.mtjsoft:GroupAvatars:1.2.0'
+	        implementation 'com.github.mtjsoft:GroupAvatars:1.3.0'
 	}
 ```
 
